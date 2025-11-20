@@ -1,54 +1,60 @@
---Ejecutar primero
-CREATE DATABASE Monedas; 
-
---Para las siguientes instrucciones, se debe cambiar la conexión
-
-/* Crear tabla MONEDA */
-CREATE TABLE Moneda( 
-	Id SERIAL PRIMARY KEY,
-	Moneda VARCHAR(100) NOT NULL,
-	Sigla VARCHAR(5) NOT NULL,
-	Simbolo VARCHAR(5) NULL,
-	Emisor VARCHAR(100) NULL,
-	Imagen BYTEA NULL
-	);
-
-/* Crear indice para MONEDA
-	ordenado por MONEDA */
-CREATE UNIQUE INDEX ixMoneda
-	ON Moneda(Moneda);
-
-/* Crear tabla CAMBIOMONEDA */
-CREATE TABLE CambioMoneda( 
-    Id SERIAL PRIMARY KEY,
-	IdMoneda int NOT NULL,
-	CONSTRAINT fkCambioMoneda_IdMoneda FOREIGN KEY (IdMoneda)
-		REFERENCES Moneda(Id),
-	Fecha DATE NOT NULL,
-	Cambio FLOAT NOT NULL
+CREATE TABLE Moneda (
+    idmoneda SERIAL PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    codigo VARCHAR(3) NOT NULL UNIQUE
 );
 
-/* Crear indice para CAMBIOMONEDA
-	ordenado por MONEDA, FECHA */
-CREATE UNIQUE INDEX ixCambioMoneda
-	ON CambioMoneda(IdMoneda, Fecha);
+CREATE TABLE CambioMoneda (
+    idcambio SERIAL PRIMARY KEY,
+    idmoneda INT NOT NULL,
+    fecha DATE NOT NULL,
+    valor DOUBLE PRECISION NOT NULL,
+    FOREIGN KEY (idmoneda) REFERENCES Moneda(idmoneda),
+    UNIQUE(idmoneda, fecha)
+);
+DO $$
+DECLARE
+    monedas TEXT[] := ARRAY['USD','EUR','GBP','JPY'];
+    moneda_actual TEXT;
+    fecha_actual DATE := (CURRENT_DATE - INTERVAL '2 months')::date;
+    fecha_fin DATE := CURRENT_DATE;
+    valor_random NUMERIC;
+    idMon INT;
+BEGIN
+    FOREACH moneda_actual IN ARRAY monedas LOOP
 
-/* Crear tabla PAIS */
-CREATE TABLE Pais(
-	Id SERIAL PRIMARY KEY,
-	Pais varchar(50) not null,
-	CodigoAlfa2 varchar(5) not null,
-	CodigoAlfa3 varchar(5) not null, 
-	IdMoneda int NOT NULL,
-	CONSTRAINT fkPais_IdMoneda FOREIGN KEY (IdMoneda)
-		REFERENCES Moneda(Id),
-	Mapa BYTEA NULL,
-	Bandera BYTEA NULL
-	);
+        SELECT idmoneda INTO idMon 
+        FROM Moneda 
+        WHERE codigo = moneda_actual;
 
-/* Crear indice para PAIS
-	ordenado por PAIS */
-CREATE UNIQUE INDEX ixPais
-	ON Pais(Pais);
-    
- 
+        IF idMon IS NULL THEN
+            INSERT INTO Moneda (nombre, codigo)
+            VALUES (moneda_actual, moneda_actual)
+            RETURNING idmoneda INTO idMon;
+        END IF;
+
+        fecha_actual := (CURRENT_DATE - INTERVAL '2 months')::date;
+
+        WHILE fecha_actual <= fecha_fin LOOP
+
+            valor_random := ROUND((RANDOM() * 500)::numeric, 4);
+
+            IF EXISTS (
+                SELECT 1 FROM CambioMoneda 
+                WHERE idmoneda = idMon AND fecha = fecha_actual
+            ) THEN
+                UPDATE CambioMoneda
+                SET valor = valor_random
+                WHERE idmoneda = idMon AND fecha = fecha_actual;
+
+            ELSE
+                INSERT INTO CambioMoneda(idmoneda, fecha, valor)
+                VALUES (idMon, fecha_actual, valor_random);
+            END IF;
+
+            fecha_actual := fecha_actual + INTERVAL '1 day';
+        END WHILE;
+
+    END LOOP;
+
+END $$;
